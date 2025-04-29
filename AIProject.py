@@ -1,12 +1,13 @@
 import streamlit as st
+import wikipedia
 import google.generativeai as genai
 import urllib.parse
-from typing import Dict, List
+from typing import Optional, Dict, List
 
-# Configure API key (Note: Use st.secrets for API keys in production)
+# Configure API key (Note: You should use st.secrets for API keys in production)
 GEMINI_API_KEY = "AIzaSyDpEGGhkNIWIQfdBk18jJzW6QfsZyy27nE"  # Replace with your valid API key
 
-def get_gemini_response(prompt: str) -> str:
+def Answer(prompt: str) -> str:
     """Get response from Gemini AI model."""
     try:
         genai.configure(api_key=GEMINI_API_KEY)
@@ -44,12 +45,21 @@ def get_maps_link(place: str, city: str) -> str:
 
 
 def get_city_description(city: str) -> str:
-    """Get city description using Gemini API"""
-    prompt = f"Provide a concise 3-sentence description of {city}, focusing on its history, geography, and cultural significance."
-    return get_gemini_response(prompt)
+    """Fetch city description from Wikipedia."""
+    try:
+        summary = wikipedia.summary(city, sentences=3, auto_suggest=False)
+        return summary
+    except wikipedia.DisambiguationError as e:
+        try:
+            summary = wikipedia.summary(e.options[0], sentences=3, auto_suggest=False)
+            return summary
+        except Exception:
+            return "❗ Couldn't find a proper description for this city."
+    except Exception:
+        return "❗ Couldn't find a proper description for this city."
 
 
-def get_travel_info_gemini(city: str) -> Dict[str, List[str]]:
+def get_travel_info_gemini(city: str) -> str:
     """Get structured travel info from Gemini AI."""
     prompt = f"""Provide structured travel details for {city} with the following sections:
     🏛 Famous Places
@@ -61,26 +71,9 @@ def get_travel_info_gemini(city: str) -> Dict[str, List[str]]:
     🍴 Recommended Restaurants
     - (List three recommended restaurants)
 
-    Format exactly like this example for Paris:
-    🏛 Famous Places
-    - Eiffel Tower
-    - Louvre Museum
-    - Notre-Dame Cathedral
-    🍽 Popular Foods
-    - Croissant
-    - Coq au Vin
-    - Ratatouille
-    🛍 Best Malls
-    - Galeries Lafayette
-    - Printemps Haussmann
-    - Westfield Les 4 Temps
-    🍴 Recommended Restaurants
-    - Le Jules Verne
-    - L'Ambroisie
-    - Chez L'Ami Jean"""
+    Each item should be on a new line with a '-' bullet point. Only provide names, no extra description."""
 
-    response = get_gemini_response(prompt)
-    return parse_travel_details(response)
+    return Answer(prompt)
 
 
 def parse_travel_details(details: str) -> Dict[str, List[str]]:
@@ -166,9 +159,12 @@ def main():
                 description = get_city_description(city)
                 st.markdown(f"<div class='description'>{description}</div>", unsafe_allow_html=True)
 
-                # Get structured travel details
-                try:
-                    sections = get_travel_info_gemini(city)
+                # Get structured travel details from Gemini AI
+                details = get_travel_info_gemini(city)
+
+                # Parse and display the details
+                if details and isinstance(details, str):
+                    sections = parse_travel_details(details)
                     
                     for title, items in sections.items():
                         st.markdown(f"<div class='section-header'>{title}</div>", unsafe_allow_html=True)
@@ -182,8 +178,8 @@ def main():
                                 )
                         else:
                             st.markdown("<div class='item'>🔹 <i>Information not available</i></div>", unsafe_allow_html=True)
-                except Exception as e:
-                    st.error(f"❗ Error fetching travel information: {str(e)}")
+                else:
+                    st.error("❗ No valid data received from Gemini AI.")
     else:
         st.warning("⚠ Please enter a city name.")
 
